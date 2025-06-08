@@ -9,30 +9,28 @@ use App\Core\Error\ErrorBootstrapper;
 // 1) Project root
 $root = dirname(__DIR__);
 
-// 2) In dev, register Whoops *before* loading .env
-$whoops = null;
-if (is_file($root . '/vendor/filp/whoops')) {
+// 2) Load & validate .env early
+$dotenv = Dotenv::createImmutable($root);
+$dotenv->load();                             // throws if unreadable
+$dotenv->required(['APP_ENV', 'DB_DSN'])     // fail-fast if missing
+       ->notEmpty();
+
+// 3) Determine the environment
+$appEnv = $_ENV['APP_ENV'] ?? 'production';
+
+// 4) In development: register Whoops
+if ($appEnv === 'development') {
     $whoops = new WhoopsRun();
     $whoops->pushHandler(new PrettyPageHandler());
     $whoops->register();
+
+    // (Optional) ensure max visibility
+    ini_set('display_errors', '1');
+    error_reporting(E_ALL);
 }
-
-// 3) Load & validate environment
-$dotenv = Dotenv::createImmutable($root);
-$dotenv->load();                            // throws if .env missing or unreadable
-$dotenv->required(['APP_ENV', 'DB_DSN'])    // ensure keys exist
-       ->notEmpty();                        // ensure they’re not empty
-
-// 4) Determine current environment
-$appEnv = $_ENV['APP_ENV'] ?? 'production';
-
-// 5) In production, unregister Whoops and run your silent handler
-if ($appEnv !== 'development') {
-    if ($whoops instanceof WhoopsRun) {
-        $whoops->unregister();
-    }
+// 5) In production: wire up your silent handler
+else {
     (new ErrorBootstrapper())->run();
 }
 
-// From here on, your environment is bootstrapped, secrets are locked down,
-// and error handling is wired based on APP_ENV.
+// 6) Done—your env is bootstrapped and error handling is in place.
