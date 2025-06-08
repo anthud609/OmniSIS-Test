@@ -2,35 +2,45 @@
 declare(strict_types=1);
 
 use Dotenv\Dotenv;
+use Monolog\Logger as MonologLogger;
+use Monolog\Handler\StreamHandler;
+use Monolog\ErrorHandler as MonologErrorHandler;
 use Whoops\Run as WhoopsRun;
 use Whoops\Handler\PrettyPageHandler;
-use App\Core\Error\ErrorBootstrapper;
+use Whoops\Handler\Handler as WhoopsHandler;
+use App\Core\Logging\Logger as AppLogger;
 
-// 1) Project root
+// 1) Project root & load .env
 $root = dirname(__DIR__);
-
-// 2) Load & validate .env early
 $dotenv = Dotenv::createImmutable($root);
-$dotenv->load();                             // throws if unreadable
-$dotenv->required(['APP_ENV', 'DB_DSN'])     // fail-fast if missing
-       ->notEmpty();
+$dotenv->load(); 
+$dotenv->required(['APP_ENV','DB_DSN'])->notEmpty();
 
-// 3) Determine the environment
 $appEnv = $_ENV['APP_ENV'] ?? 'production';
 
-// 4) In development: register Whoops
+// 2) Bootstrap a global Monolog logger via your helper
+//    (this also creates logs/app.log if needed)
+$logger = AppLogger::getLogger();
+
+// 3) **Always** hook Monolog’s error/exception/fatal handlers
+MonologErrorHandler::register($logger);
+
 if ($appEnv === 'development') {
+    // … MonologErrorHandler registered already …
+
     $whoops = new WhoopsRun();
+
+    // Log via Monolog, then *fall through* to PrettyPageHandler
+    $whoops->pushHandler(function (\Throwable $e, $inspector, $run) use ($logger) {
+        $logger->error($e->getMessage(), ['exception' => $e]);
+        // no return ⇒ Whoops will continue to the next handler
+    });
+
+    // then the normal pretty page…
     $whoops->pushHandler(new PrettyPageHandler());
     $whoops->register();
-
-    // (Optional) ensure max visibility
-    ini_set('display_errors', '1');
-    error_reporting(E_ALL);
-}
-// 5) In production: wire up your silent handler
-else {
-    (new ErrorBootstrapper())->run();
 }
 
-// 6) Done—your env is bootstrapped and error handling is in place.
+// 5) From here on, errors/exceptions always both:
+//      • get formatted by Whoops in DEV  
+//      • and get written to logs/app.log in every env  
