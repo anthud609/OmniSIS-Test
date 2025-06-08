@@ -1,21 +1,26 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/../vendor/autoload.php';  // go up from public/ to root
+//
+// 1) Composer autoload + bootstrap all core services
+//
+require __DIR__ . '/../vendor/autoload.php';
+require __DIR__ . '/../app/bootstrap.php';
 
-use Dotenv\Dotenv;
-
-// __DIR__ is public/, so dirname(__DIR__) is your project root
-$root = dirname(__DIR__);
-
-// Load and return all vars
-$dotenv = Dotenv::createImmutable($root);
-$loaded = $dotenv->load();
-
-echo "Loaded from .env:\n";
-foreach ($loaded as $k => $v) {
-    printf("%-20s = %s\n", $k, $v);
+//
+// 2) (Optional) ENV dump in DEV only
+//
+if (($_ENV['APP_ENV'] ?? '') === 'development') {
+    header('Content-Type: text/plain');
+    echo "— Loaded .env variables —\n";
+    foreach ($_ENV as $key => $val) {
+        printf("%-20s = %s\n", $key, $val);
+    }
+    exit;
 }
 
-echo "\n\$_ENV now contains:\n";
-print_r($_ENV);
+//
+// 3) Dispatch to your MVC kernel (controllers, routers, etc.)
+//
+$app = new App\Kernel();
+$app->handleRequest();
